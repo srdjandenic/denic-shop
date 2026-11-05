@@ -1,14 +1,12 @@
-export type { TenantSettings } from '../schema/tenants'
 export type { UserRole } from '../schema/users'
 export type {
   OrderStatus,
-  PaymentMethodType,
   PaymentStatus,
-  PaymentMethodConfig,
-  IpsQrConfig,
-  CodConfig,
-  BankTransferConfig,
+  FulfillmentStatus,
+  PaymentMethod,
 } from '../schema/orders'
+export type { IpsQrConfig, CodConfig } from '../schema/payment-config'
+export type { CurrencyCode } from '../schema/products'
 
 export type Pagination = {
   page: number

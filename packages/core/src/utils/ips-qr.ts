@@ -1,4 +1,4 @@
-import type { IpsQrConfig } from '../schema/orders'
+import type { IpsQrConfig } from '../schema/payment-config'
 
 export type IpsQrPayload = {
   config: IpsQrConfig

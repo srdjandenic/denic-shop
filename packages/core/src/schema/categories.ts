@@ -1,14 +1,21 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
-import { sql } from 'drizzle-orm'
-import { tenants } from './tenants'
+import { sql, relations } from 'drizzle-orm'
 
-export const categories = sqliteTable('categories', {
+export const productCategories = sqliteTable('product_categories', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  tenantId: text('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   parentId: text('parent_id'),
-  slug: text('slug').notNull(),
+  slug: text('slug').notNull().unique(),
   name: text('name').notNull(),
   description: text('description'),
   sortOrder: integer('sort_order').notNull().default(0),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
+
+export const productCategoriesRelations = relations(productCategories, ({ one, many }) => ({
+  parent: one(productCategories, {
+    fields: [productCategories.parentId],
+    references: [productCategories.id],
+    relationName: 'parent',
+  }),
+  children: many(productCategories, { relationName: 'parent' }),
+}))

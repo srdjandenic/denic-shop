@@ -1,7 +1,24 @@
 import { z } from 'zod'
+import { PAYMENT_METHODS } from '../schema/orders'
 
-export const AddressSchema = z.object({
-  fullName: z.string().min(1),
+export const ShippingAddressSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  company: z.string().optional(),
+  street: z.string().min(1),
+  city: z.string().min(1),
+  postalCode: z.string().min(4),
+  country: z.string().length(2).default('RS'),
+  phone: z.string().optional(),
+  email: z.string().email(),
+})
+
+export const BillingAddressSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  companyName: z.string().optional(),
+  pib: z.string().optional(),
+  mb: z.string().optional(),
   street: z.string().min(1),
   city: z.string().min(1),
   postalCode: z.string().min(4),
@@ -9,11 +26,11 @@ export const AddressSchema = z.object({
 })
 
 export const CheckoutSchema = z.object({
-  email: z.string().email(),
-  name: z.string().min(1),
-  phone: z.string().optional(),
-  address: AddressSchema,
-  paymentMethod: z.enum(['ips_qr', 'cod', 'bank_transfer']),
+  currencyCode: z.enum(['RSD', 'EUR']).default('RSD'),
+  shippingAddress: ShippingAddressSchema,
+  billingAddress: BillingAddressSchema.optional(),
+  shippingZoneRateId: z.string().uuid().optional(),
+  paymentMethod: z.enum(PAYMENT_METHODS),
   note: z.string().optional(),
   items: z.array(z.object({
     variantId: z.string().uuid(),
@@ -22,4 +39,5 @@ export const CheckoutSchema = z.object({
 })
 
 export type CheckoutInput = z.infer<typeof CheckoutSchema>
-export type AddressInput = z.infer<typeof AddressSchema>
+export type ShippingAddressInput = z.infer<typeof ShippingAddressSchema>
+export type BillingAddressInput = z.infer<typeof BillingAddressSchema>
