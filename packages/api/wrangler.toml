@@ -11,7 +11,7 @@ R2_PUBLIC_URL = ""
 [[d1_databases]]
 binding = "DB"
 database_name = "denic-shop"
-database_id = "PLACEHOLDER_SET_AFTER_CREATION"
+database_id = "3e40c379-a920-4373-aa35-c83d49e60068"
 
 [[r2_buckets]]
 binding = "MEDIA"

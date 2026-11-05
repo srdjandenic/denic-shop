@@ -18,7 +18,7 @@ export async function signToken(payload: Omit<JwtPayload, 'exp'>, secret: string
 }
 
 export async function verifyToken(token: string, secret: string): Promise<JwtPayload> {
-  const payload = await verify(token, secret) as JwtPayload
+  const payload = await verify(token, secret, 'HS256') as JwtPayload
   return payload
 }
 

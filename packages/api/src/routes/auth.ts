@@ -34,9 +34,10 @@ authRoutes.post('/login', async (c) => {
     c.env.JWT_SECRET
   )
 
+  const isLocal = c.req.header('host')?.startsWith('localhost') ?? false
   setCookie(c, 'session', token, {
     httpOnly: true,
-    secure: true,
+    secure: !isLocal,
     sameSite: 'Lax',
     maxAge: 60 * 60 * 8,
     path: '/',
