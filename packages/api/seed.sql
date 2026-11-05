@@ -34,7 +34,7 @@ INSERT INTO payment_methods (id, tenant_id, type, active, config, sort_order) VA
     'tenant-test-0001',
     'ips_qr',
     1,
-    '{"recipientName":"Test Prodavnica d.o.o.","accountNumber":"RS35105008123456789012","bankCode":"105","pib":"123456789","model":"97","referencePrefix":"11"}',
+    '{"recipientName":"Srdjan Denic, Beograd","accountNumber":"105000000328120183","bankCode":"105","pib":"","model":"97","referencePrefix":"11"}',
     1
   ),
   (
