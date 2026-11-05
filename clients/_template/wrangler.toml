@@ -1,0 +1,26 @@
+# ================================================================
+# Starter za novog klijenta — kopiraj fasciklu, preimenuj, popuni.
+# ================================================================
+name = "denic-shop-TENANT_SLUG"
+main = "../../packages/api/src/index.ts"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+TENANT_SLUG = "TENANT_SLUG"
+JWT_SECRET = "CHANGE_ME"
+RESEND_API_KEY = ""
+R2_PUBLIC_URL = "https://media.TENANT_DOMAIN"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "denic-shop-TENANT_SLUG"
+database_id = "PLACEHOLDER"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "denic-shop-TENANT_SLUG-media"
+
+[routes]
+pattern = "TENANT_DOMAIN/api/*"
+zone_name = "TENANT_DOMAIN"

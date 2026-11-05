@@ -1,0 +1,21 @@
+name = "denic-shop-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+JWT_SECRET = "CHANGE_ME_IN_DASHBOARD"
+RESEND_API_KEY = ""
+R2_PUBLIC_URL = ""
+
+[[d1_databases]]
+binding = "DB"
+database_name = "denic-shop"
+database_id = "PLACEHOLDER_SET_AFTER_CREATION"
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "denic-shop-media"
+
+[dev]
+port = 8787
