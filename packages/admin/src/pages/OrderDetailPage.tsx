@@ -5,7 +5,7 @@ import { api } from '../lib/api'
 import { ORDER_STATUSES } from '@denic-shop/core/schema'
 
 export function OrderDetailPage() {
-  const { id } = useParams({ from: '/orders/$id' })
+  const { id } = useParams({ from: '/_dashboard/orders/$id' })
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -16,7 +16,7 @@ export function OrderDetailPage() {
   const { data: qrData } = useQuery({
     queryKey: ['order-qr', id],
     queryFn: () => api.orders.ipsQr(id),
-    enabled: (data as any)?.data?.paymentMethod === 'ips_qr',
+    enabled: (data as any)?.paymentMethod === 'ips_qr',
   })
 
   const mutation = useMutation({
@@ -26,8 +26,8 @@ export function OrderDetailPage() {
 
   if (isLoading) return <p>Učitavanje…</p>
 
-  const order = (data as any)?.data
-  const qr = (qrData as any)?.data
+  const order = (data as any)
+  const qr = (qrData as any)
 
   if (!order) return <p>Porudžbina nije pronađena.</p>
 

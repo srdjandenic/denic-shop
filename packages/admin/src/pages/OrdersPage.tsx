@@ -43,7 +43,7 @@ export function OrdersPage() {
     a.click()
   }
 
-  const orders = (data as any)?.data ?? []
+  const orders = (data as any) ?? []
 
   return (
     <div>

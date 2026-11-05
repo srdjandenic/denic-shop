@@ -7,7 +7,7 @@ export function ProductsPage() {
     queryFn: () => api.products.list(),
   })
 
-  const products = (data as any)?.data ?? []
+  const products = (data as any) ?? []
 
   return (
     <div>

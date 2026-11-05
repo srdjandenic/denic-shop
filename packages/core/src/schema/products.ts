@@ -1,5 +1,5 @@
 import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
-import { sql } from 'drizzle-orm'
+import { sql, relations } from 'drizzle-orm'
 import { tenants } from './tenants'
 import { categories } from './categories'
 
@@ -41,3 +41,16 @@ export const productMedia = sqliteTable('product_media', {
   isCover: integer('is_cover', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
+
+export const productsRelations = relations(products, ({ many }) => ({
+  productVariants: many(productVariants),
+  productMedia: many(productMedia),
+}))
+
+export const productVariantsRelations = relations(productVariants, ({ one }) => ({
+  product: one(products, { fields: [productVariants.productId], references: [products.id] }),
+}))
+
+export const productMediaRelations = relations(productMedia, ({ one }) => ({
+  product: one(products, { fields: [productMedia.productId], references: [products.id] }),
+}))
