@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { api } from '../lib/api'
 
 export function ProductsPage() {
@@ -13,9 +14,9 @@ export function ProductsPage() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 500 }}>Proizvodi</h1>
-        <button style={{ background: '#1a1a1a', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 14, cursor: 'pointer' }}>
+        <Link to="/products/new" style={{ background: '#1a1a1a', color: '#fff', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 14, cursor: 'pointer', textDecoration: 'none' }}>
           + Novi proizvod
-        </button>
+        </Link>
       </div>
 
       {isLoading ? (
@@ -26,7 +27,7 @@ export function ProductsPage() {
             const cover = p.productMedia?.[0]
             const minPrice = Math.min(...(p.productVariants?.map((v: any) => v.priceRsd) ?? [0]))
             return (
-              <div key={p.id} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e9e7e1', overflow: 'hidden' }}>
+              <Link key={p.id} to="/products/$id" params={{ id: p.id }} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e9e7e1', overflow: 'hidden', textDecoration: 'none', color: 'inherit', display: 'block' }}>
                 {cover ? (
                   <div style={{ height: 160, background: '#f5f5f4', overflow: 'hidden' }}>
                     <img src={cover.r2Key} alt={cover.alt ?? p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -46,7 +47,7 @@ export function ProductsPage() {
                     </span>
                   </div>
                 </div>
-              </div>
+              </Link>
             )
           })}
         </div>

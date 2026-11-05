@@ -6,6 +6,9 @@ import { productRoutes } from './routes/products'
 import { orderRoutes } from './routes/orders'
 import { checkoutRoutes } from './routes/checkout'
 import { storefrontRoutes } from './routes/storefront'
+import { categoryRoutes } from './routes/categories'
+import { settingsRoutes } from './routes/settings'
+import { userRoutes } from './routes/users'
 import type { Env } from './lib/env'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -23,6 +26,9 @@ app.route('/api/v1/products', productRoutes)
 app.route('/api/v1/orders', orderRoutes)
 app.route('/api/v1/checkout', checkoutRoutes)
 app.route('/api/v1/storefront', storefrontRoutes)
+app.route('/api/v1/categories', categoryRoutes)
+app.route('/api/v1/settings', settingsRoutes)
+app.route('/api/v1/users', userRoutes)
 
 app.notFound((c) => c.json({ error: 'Ruta nije pronađena' }, 404))
 app.onError((err, c) => {

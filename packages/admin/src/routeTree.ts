@@ -4,6 +4,10 @@ import { DashboardLayout } from './pages/DashboardLayout'
 import { OrdersPage } from './pages/OrdersPage'
 import { OrderDetailPage } from './pages/OrderDetailPage'
 import { ProductsPage } from './pages/ProductsPage'
+import { ProductFormPage } from './pages/ProductFormPage'
+import { CategoriesPage } from './pages/CategoriesPage'
+import { SettingsPage } from './pages/SettingsPage'
+import { UsersPage } from './pages/UsersPage'
 import { IndexRedirect } from './pages/IndexRedirect'
 
 export const rootRoute = createRootRoute({ component: Outlet })
@@ -52,6 +56,36 @@ export const productsRoute = createRoute({
   component: ProductsPage,
 })
 
+export const productNewRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/products/new',
+  component: ProductFormPage,
+})
+
+export const productEditRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/products/$id',
+  component: ProductFormPage,
+})
+
+export const categoriesRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/categories',
+  component: CategoriesPage,
+})
+
+export const settingsRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/settings',
+  component: SettingsPage,
+})
+
+export const usersRoute = createRoute({
+  getParentRoute: () => dashboardRoute,
+  path: '/users',
+  component: UsersPage,
+})
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   dashboardRoute.addChildren([
@@ -59,5 +93,10 @@ export const routeTree = rootRoute.addChildren([
     ordersRoute,
     orderDetailRoute,
     productsRoute,
+    productNewRoute,
+    productEditRoute,
+    categoriesRoute,
+    settingsRoute,
+    usersRoute,
   ]),
 ])
