@@ -30,7 +30,7 @@ export function ProductsPage() {
               <Link key={p.id} to="/products/$id" params={{ id: p.id }} style={{ background: '#fff', borderRadius: 12, border: '1px solid #e9e7e1', overflow: 'hidden', textDecoration: 'none', color: 'inherit', display: 'block' }}>
                 {cover ? (
                   <div style={{ height: 160, background: '#f5f5f4', overflow: 'hidden' }}>
-                    <img src={cover.r2Key} alt={cover.alt ?? p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={cover.url ?? `/api/v1/media/${cover.r2Key}`} alt={cover.alt ?? p.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                 ) : (
                   <div style={{ height: 100, background: '#f1efe8', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b4b2a9', fontSize: 13 }}>

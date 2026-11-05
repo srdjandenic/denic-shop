@@ -1,9 +1,10 @@
 import { z } from 'zod'
 
 export const VariantSchema = z.object({
-  sku: z.string().min(1),
-  name: z.string().min(1),
-  priceRsd: z.number().int().positive(),
+  id: z.string().uuid().optional(),
+  sku: z.string().default(''),
+  name: z.string().default(''),
+  priceRsd: z.number().int().min(0).default(0),
   compareAtPriceRsd: z.number().int().positive().optional(),
   stock: z.number().int().min(0).default(0),
   attributes: z.record(z.string()).default({}),

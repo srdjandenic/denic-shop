@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { eq, and, desc } from 'drizzle-orm'
+import { eq, and, desc, inArray, notInArray } from 'drizzle-orm'
 import { createDb } from '../lib/db'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { CreateProductSchema, UpdateProductSchema } from '@denic-shop/core/validators'
@@ -33,7 +33,7 @@ productRoutes.get('/:id', async (c) => {
 
   const product = await db.query.products.findFirst({
     where: and(eq(products.id, c.req.param('id')), eq(products.tenantId, tenantId)),
-    with: { productVariants: true, productMedia: true, categories: true },
+    with: { productVariants: true, productMedia: true },
   })
 
   if (!product) return c.json({ error: 'Nije pronađen' }, 404)
@@ -96,6 +96,33 @@ productRoutes.patch('/:id', requireRole('owner', 'admin'), async (c) => {
     .set({ ...productData, updatedAt: new Date().toISOString() })
     .where(eq(products.id, existing.id))
 
+  if (variants && variants.length > 0) {
+    const slug = productData.slug || existing.slug
+    const productName = productData.name || existing.name
+
+    for (let i = 0; i < variants.length; i++) {
+      const v = variants[i]
+      const sku = v.sku || `${slug}-${i + 1}`
+      const name = v.name || productName
+
+      if (v.id) {
+        const variantExists = await db.query.productVariants.findFirst({ where: eq(productVariants.id, v.id) })
+        if (variantExists) {
+          await db.update(productVariants)
+            .set({ sku, name, priceRsd: v.priceRsd, compareAtPriceRsd: v.compareAtPriceRsd ?? null, stock: v.stock, attributes: v.attributes, active: v.active })
+            .where(eq(productVariants.id, v.id))
+          continue
+        }
+      }
+      await db.insert(productVariants).values({ productId: existing.id, sku, name, priceRsd: v.priceRsd, compareAtPriceRsd: v.compareAtPriceRsd ?? null, stock: v.stock, attributes: v.attributes, active: v.active })
+    }
+
+    const keptIds = variants.filter(v => v.id).map(v => v.id as string)
+    if (keptIds.length > 0) {
+      await db.delete(productVariants).where(and(eq(productVariants.productId, existing.id), notInArray(productVariants.id, keptIds)))
+    }
+  }
+
   return c.json({ data: { ok: true } })
 })
 
@@ -148,7 +175,7 @@ productRoutes.post('/:id/media', requireRole('owner', 'admin'), async (c) => {
   return c.json({
     data: {
       id: mediaId,
-      url: `${c.env.R2_PUBLIC_URL}/${r2Key}`,
+      url: `/api/v1/media/${r2Key}`,
       r2Key,
     },
   }, 201)

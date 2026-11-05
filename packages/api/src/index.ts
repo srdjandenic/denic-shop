@@ -9,6 +9,7 @@ import { storefrontRoutes } from './routes/storefront'
 import { categoryRoutes } from './routes/categories'
 import { settingsRoutes } from './routes/settings'
 import { userRoutes } from './routes/users'
+import { mediaRoutes } from './routes/media'
 import type { Env } from './lib/env'
 
 const app = new Hono<{ Bindings: Env }>()
@@ -29,6 +30,7 @@ app.route('/api/v1/storefront', storefrontRoutes)
 app.route('/api/v1/categories', categoryRoutes)
 app.route('/api/v1/settings', settingsRoutes)
 app.route('/api/v1/users', userRoutes)
+app.route('/api/v1/media', mediaRoutes)
 
 app.notFound((c) => c.json({ error: 'Ruta nije pronađena' }, 404))
 app.onError((err, c) => {

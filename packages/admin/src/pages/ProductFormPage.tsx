@@ -258,7 +258,7 @@ export function ProductFormPage() {
               {mediaList.map((m: any) => (
                 <div key={m.id} style={{ position: 'relative', width: 100, height: 100 }}>
                   <img
-                    src={m.url ?? m.r2Key}
+                    src={m.url ?? `/api/v1/media/${m.r2Key}`}
                     alt={m.alt ?? ''}
                     style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, border: m.isCover ? '2px solid #534AB7' : '1px solid #e9e7e1' }}
                   />

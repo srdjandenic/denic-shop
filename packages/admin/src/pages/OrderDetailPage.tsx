@@ -5,7 +5,7 @@ import { api } from '../lib/api'
 import { ORDER_STATUSES } from '@denic-shop/core/schema'
 
 export function OrderDetailPage() {
-  const { id } = useParams({ from: '/_dashboard/orders/$id' })
+  const { id } = useParams({ strict: false }) as { id: string }
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
