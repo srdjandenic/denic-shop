@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { eq, and, desc, inArray, notInArray } from 'drizzle-orm'
+import { eq, and, desc } from 'drizzle-orm'
 import { createDb } from '../lib/db'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { CreateProductSchema, UpdateProductSchema } from '@denic-shop/core/validators'
@@ -96,30 +96,22 @@ productRoutes.patch('/:id', requireRole('owner', 'admin'), async (c) => {
     .set({ ...productData, updatedAt: new Date().toISOString() })
     .where(eq(products.id, existing.id))
 
-  if (variants && variants.length > 0) {
+  if (variants !== undefined) {
     const slug = productData.slug || existing.slug
     const productName = productData.name || existing.name
-
-    for (let i = 0; i < variants.length; i++) {
-      const v = variants[i]
-      const sku = v.sku || `${slug}-${i + 1}`
-      const name = v.name || productName
-
-      if (v.id) {
-        const variantExists = await db.query.productVariants.findFirst({ where: eq(productVariants.id, v.id) })
-        if (variantExists) {
-          await db.update(productVariants)
-            .set({ sku, name, priceRsd: v.priceRsd, compareAtPriceRsd: v.compareAtPriceRsd ?? null, stock: v.stock, attributes: v.attributes, active: v.active })
-            .where(eq(productVariants.id, v.id))
-          continue
-        }
-      }
-      await db.insert(productVariants).values({ productId: existing.id, sku, name, priceRsd: v.priceRsd, compareAtPriceRsd: v.compareAtPriceRsd ?? null, stock: v.stock, attributes: v.attributes, active: v.active })
-    }
-
-    const keptIds = variants.filter(v => v.id).map(v => v.id as string)
-    if (keptIds.length > 0) {
-      await db.delete(productVariants).where(and(eq(productVariants.productId, existing.id), notInArray(productVariants.id, keptIds)))
+    await db.delete(productVariants).where(eq(productVariants.productId, existing.id))
+    if (variants.length > 0) {
+      await db.insert(productVariants).values(variants.map((v, i) => ({
+        id: v.id ?? crypto.randomUUID(),
+        productId: existing.id,
+        sku: v.sku || `${slug}-${i + 1}`,
+        name: v.name || productName,
+        priceRsd: v.priceRsd,
+        compareAtPriceRsd: v.compareAtPriceRsd ?? null,
+        stock: v.stock,
+        attributes: v.attributes,
+        active: v.active,
+      })))
     }
   }
 

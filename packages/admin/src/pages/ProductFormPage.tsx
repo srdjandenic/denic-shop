@@ -80,6 +80,7 @@ export function ProductFormPage() {
         published,
         hasVariants,
         variants: variants.map(v => ({
+          ...(v.id ? { id: v.id } : {}),
           sku: v.sku || `${slugify(name)}-1`,
           name: v.name || name,
           priceRsd: Number(v.priceRsd),
