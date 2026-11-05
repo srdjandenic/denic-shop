@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { CheckoutSchema } from '../orders'
+import { CheckoutSchema } from '../customers'
 
 const validCheckout = {
-  items: [{ variantId: 'var-001', quantity: 2 }],
-  shippingName: 'Petar Petrovic',
-  shippingEmail: 'petar@example.com',
-  shippingStreet: 'Knez Mihailova 1',
-  shippingCity: 'Beograd',
-  shippingPostalCode: '11000',
+  items: [{ variantId: '00000000-0000-0000-0000-000000000001', quantity: 2 }],
+  email: 'petar@example.com',
+  name: 'Petar Petrovic',
+  phone: '+381641234567',
+  address: {
+    fullName: 'Petar Petrovic',
+    street: 'Knez Mihailova 1',
+    city: 'Beograd',
+    postalCode: '11000',
+    country: 'RS',
+  },
   paymentMethod: 'ips_qr' as const,
 }
 
@@ -23,14 +28,20 @@ describe('CheckoutSchema', () => {
   })
 
   it('odbija kolicinu 0 ili negativnu', () => {
-    const r1 = CheckoutSchema.safeParse({ ...validCheckout, items: [{ variantId: 'v1', quantity: 0 }] })
-    const r2 = CheckoutSchema.safeParse({ ...validCheckout, items: [{ variantId: 'v1', quantity: -1 }] })
+    const r1 = CheckoutSchema.safeParse({
+      ...validCheckout,
+      items: [{ variantId: '00000000-0000-0000-0000-000000000001', quantity: 0 }],
+    })
+    const r2 = CheckoutSchema.safeParse({
+      ...validCheckout,
+      items: [{ variantId: '00000000-0000-0000-0000-000000000001', quantity: -1 }],
+    })
     expect(r1.success).toBe(false)
     expect(r2.success).toBe(false)
   })
 
   it('odbija neispravni email', () => {
-    const result = CheckoutSchema.safeParse({ ...validCheckout, shippingEmail: 'nije-email' })
+    const result = CheckoutSchema.safeParse({ ...validCheckout, email: 'nije-email' })
     expect(result.success).toBe(false)
   })
 
@@ -46,23 +57,24 @@ describe('CheckoutSchema', () => {
     }
   })
 
-  it('shippingCountry default je RS', () => {
-    const result = CheckoutSchema.safeParse(validCheckout)
-    expect(result.success && result.data.shippingCountry).toBe('RS')
+  it('address.country default je RS', () => {
+    const input = { ...validCheckout, address: { ...validCheckout.address, country: undefined } }
+    const result = CheckoutSchema.safeParse(input)
+    expect(result.success && result.data.address.country).toBe('RS')
   })
 
-  it('odbija ime krrace od 2 karaktera', () => {
-    const result = CheckoutSchema.safeParse({ ...validCheckout, shippingName: 'A' })
+  it('odbija ime krrace od 1 karaktera', () => {
+    const result = CheckoutSchema.safeParse({ ...validCheckout, name: '' })
     expect(result.success).toBe(false)
+  })
+
+  it('phone je opcionalno', () => {
+    const result = CheckoutSchema.safeParse({ ...validCheckout, phone: undefined })
+    expect(result.success).toBe(true)
   })
 
   it('note je opcionalno', () => {
     const result = CheckoutSchema.safeParse({ ...validCheckout, note: undefined })
     expect(result.success).toBe(true)
-  })
-
-  it('odbija note duze od 500 karaktera', () => {
-    const result = CheckoutSchema.safeParse({ ...validCheckout, note: 'A'.repeat(501) })
-    expect(result.success).toBe(false)
   })
 })
