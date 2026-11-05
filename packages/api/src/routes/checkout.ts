@@ -1,71 +1,94 @@
-import { Hono } from 'hono'
-import { eq, and } from 'drizzle-orm'
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
+import { eq } from 'drizzle-orm'
 import { createDb } from '../lib/db'
-import { CheckoutSchema } from '@denic-shop/core/validators'
+import { PAYMENT_METHODS } from '@denic-shop/core/schema'
 import {
-  orders,
-  orderLineItems,
-  orderShippingAddresses,
-  orderBillingAddresses,
-  orderTimeline,
-  orderTransactions,
-  productVariants,
-  variantPrices,
-  inventoryItems,
-  inventoryLevels,
-  carts,
-  idempotencyKeys,
-  settings,
+  orders, orderLineItems, orderShippingAddresses, orderBillingAddresses,
+  orderTimeline, orderTransactions, productVariants, variantPrices,
+  inventoryItems, inventoryLevels, idempotencyKeys, settings,
 } from '@denic-shop/core/schema'
 import { buildIpsQrString } from '@denic-shop/core/utils'
 import type { Env } from '../lib/env'
 
-const app = new Hono<{ Bindings: Env }>()
+const ShippingAddressSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  company: z.string().optional(),
+  street: z.string().min(1),
+  city: z.string().min(1),
+  postalCode: z.string().min(4),
+  country: z.string().length(2).default('RS'),
+  phone: z.string().optional(),
+  email: z.string().email(),
+})
 
-// POST /checkout
-app.post('/', async (c) => {
+const BillingAddressSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  companyName: z.string().optional(),
+  pib: z.string().optional(),
+  mb: z.string().optional(),
+  street: z.string().min(1),
+  city: z.string().min(1),
+  postalCode: z.string().min(4),
+  country: z.string().length(2).default('RS'),
+})
+
+const CheckoutBodySchema = z.object({
+  currencyCode: z.enum(['RSD', 'EUR']).default('RSD'),
+  shippingAddress: ShippingAddressSchema,
+  billingAddress: BillingAddressSchema.optional(),
+  shippingZoneRateId: z.string().uuid().optional(),
+  paymentMethod: z.enum(PAYMENT_METHODS),
+  note: z.string().optional(),
+  items: z.array(z.object({
+    variantId: z.string().uuid(),
+    quantity: z.number().int().positive(),
+  })).min(1),
+})
+
+const ErrorSchema = z.object({ error: z.string() })
+
+const app = new OpenAPIHono<{ Bindings: Env }>()
+
+const checkoutRoute = createRoute({
+  method: 'post', path: '/', tags: ['Checkout'],
+  request: { body: { content: { 'application/json': { schema: CheckoutBodySchema } } } },
+  responses: {
+    201: { description: 'Porudžbina kreirana', content: { 'application/json': { schema: z.object({ data: z.object({ orderId: z.string(), orderNumber: z.string(), ipsQrString: z.string().optional() }) }) } } },
+    400: { description: 'Greška', content: { 'application/json': { schema: ErrorSchema } } },
+    422: { description: 'Validacija', content: { 'application/json': { schema: ErrorSchema } } },
+  },
+})
+app.openapi(checkoutRoute, async (c) => {
   const db = createDb(c.env.DB)
-  const parsed = CheckoutSchema.safeParse(await c.req.json())
-  if (!parsed.success) return c.json({ error: 'Validacija neuspešna', details: parsed.error.flatten() }, 422)
-  const body = parsed.data
+  const body = c.req.valid('json')
 
   // Idempotency check
   const idempotencyKey = c.req.header('Idempotency-Key')
   if (idempotencyKey) {
-    const existing = await db.query.idempotencyKeys.findFirst({
-      where: eq(idempotencyKeys.key, idempotencyKey),
-    })
+    const existing = await db.query.idempotencyKeys.findFirst({ where: eq(idempotencyKeys.key, idempotencyKey) })
     if (existing) {
       return c.json(JSON.parse(existing.responseBody), existing.responseStatus as any)
     }
   }
 
-  // Validacija i cene varijanti
+  // Validacija varijanti i cena
   const lineItemsData: Array<{
-    variantId: string
-    quantity: number
-    productName: string
-    variantName: string
-    sku: string
-    unitPrice: number
-    totalPrice: number
-    requiresShipping: boolean
+    variantId: string; quantity: number; productName: string; variantName: string
+    sku: string; unitPrice: number; totalPrice: number; requiresShipping: boolean
   }> = []
 
   for (const item of body.items) {
     const variant = await db.query.productVariants.findFirst({
       where: eq(productVariants.id, item.variantId),
-      with: {
-        prices: true,
-        product: true,
-      },
+      with: { prices: true, product: true },
     })
     if (!variant) return c.json({ error: `Varijanta nije pronađena: ${item.variantId}` }, 400)
 
     const price = variant.prices.find(p => p.currencyCode === body.currencyCode)
     if (!price) return c.json({ error: `Nema cene za ${body.currencyCode}: ${item.variantId}` }, 400)
 
-    // Provjera zaliha (bez backorder)
     if (!variant.allowBackorder) {
       const invItem = await db.query.inventoryItems.findFirst({
         where: eq(inventoryItems.variantId, variant.id),
@@ -78,20 +101,17 @@ app.post('/', async (c) => {
     }
 
     lineItemsData.push({
-      variantId: variant.id,
-      quantity: item.quantity,
+      variantId: variant.id, quantity: item.quantity,
       productName: (variant as any).product?.name ?? '',
-      variantName: variant.name,
-      sku: variant.sku,
-      unitPrice: price.amount,
-      totalPrice: price.amount * item.quantity,
+      variantName: variant.name, sku: variant.sku,
+      unitPrice: price.amount, totalPrice: price.amount * item.quantity,
       requiresShipping: variant.requiresShipping,
     })
   }
 
   const subtotal = lineItemsData.reduce((s, i) => s + i.totalPrice, 0)
 
-  // Generisanje broja porudžbine (prefix iz settings)
+  // Broj porudžbine
   const prefixRow = await db.query.settings.findFirst({ where: eq(settings.key, 'order_number_prefix') })
   const prefix = prefixRow?.value ?? ''
   const countRow = await db.select().from(orders).all()
@@ -99,113 +119,70 @@ app.post('/', async (c) => {
   const orderNumber = prefix ? `${prefix}-${nextNum}` : nextNum
 
   const orderId = crypto.randomUUID()
-
-  // Inicijalni payment status zavisi od metode
   const initialPaymentStatus = body.paymentMethod === 'cod' ? 'cod_pending' : 'pending'
 
   await db.insert(orders).values({
-    id: orderId,
-    orderNumber,
-    currencyCode: body.currencyCode,
-    subtotal,
-    shippingTotal: 0,
-    taxTotal: 0,
-    discountTotal: 0,
-    total: subtotal,
-    paymentMethod: body.paymentMethod,
-    paymentStatus: initialPaymentStatus,
-    status: 'open',
-    fulfillmentStatus: 'unfulfilled',
-    notes: body.note,
+    id: orderId, orderNumber, currencyCode: body.currencyCode,
+    subtotal, shippingTotal: 0, taxTotal: 0, discountTotal: 0, total: subtotal,
+    paymentMethod: body.paymentMethod, paymentStatus: initialPaymentStatus,
+    status: 'open', fulfillmentStatus: 'unfulfilled', notes: body.note,
   })
 
-  // Shipping address
-  await db.insert(orderShippingAddresses).values({
-    orderId,
-    ...body.shippingAddress,
-  })
+  await db.insert(orderShippingAddresses).values({ orderId, ...body.shippingAddress })
 
-  // Billing address (kopira shipping ako nije prosleđena)
   const billing = body.billingAddress ?? {
-    firstName: body.shippingAddress.firstName,
-    lastName: body.shippingAddress.lastName,
-    street: body.shippingAddress.street,
-    city: body.shippingAddress.city,
-    postalCode: body.shippingAddress.postalCode,
-    country: body.shippingAddress.country,
+    firstName: body.shippingAddress.firstName, lastName: body.shippingAddress.lastName,
+    street: body.shippingAddress.street, city: body.shippingAddress.city,
+    postalCode: body.shippingAddress.postalCode, country: body.shippingAddress.country,
   }
   await db.insert(orderBillingAddresses).values({ orderId, ...billing })
 
-  // Line items + rezervacija zaliha
   for (const item of lineItemsData) {
-    const lineItemId = crypto.randomUUID()
-    await db.insert(orderLineItems).values({ id: lineItemId, orderId, ...item })
+    await db.insert(orderLineItems).values({ id: crypto.randomUUID(), orderId, ...item })
 
-    // Rezervacija zaliha
     const invItem = await db.query.inventoryItems.findFirst({
       where: eq(inventoryItems.variantId, item.variantId),
       with: { levels: true },
     })
     if (invItem?.levels?.[0]) {
-      const lvl = invItem.levels[0]
+      const lvl = invItem.levels[0]!
       await db.update(inventoryLevels)
         .set({ reserved: lvl.reserved + item.quantity })
         .where(eq(inventoryLevels.id, lvl.id))
     }
   }
 
-  await db.insert(orderTimeline).values({
-    orderId,
-    event: 'order.created',
-    body: `Metoda: ${body.paymentMethod}`,
-  })
+  await db.insert(orderTimeline).values({ orderId, event: 'order.created', body: `Metoda: ${body.paymentMethod}` })
 
-  // IPS QR string za ips_qr metodu
   let ipsQrString: string | undefined
   if (body.paymentMethod === 'ips_qr') {
     ipsQrString = buildIpsQrString({
       config: {
-        recipientName: c.env.IPS_RECIPIENT_NAME,
-        accountNumber: c.env.IPS_ACCOUNT_NUMBER,
-        pib: c.env.IPS_PIB,
-        model: c.env.IPS_MODEL,
-        referencePrefix: c.env.IPS_REFERENCE_PREFIX,
+        recipientName: c.env.IPS_RECIPIENT_NAME, accountNumber: c.env.IPS_ACCOUNT_NUMBER,
+        pib: c.env.IPS_PIB, model: c.env.IPS_MODEL, referencePrefix: c.env.IPS_REFERENCE_PREFIX,
         bankCode: '',
       },
-      amount: Math.round(subtotal / 100),
-      orderNumber,
+      amount: Math.round(subtotal / 100), orderNumber,
     })
 
     await db.insert(orderTransactions).values({
-      orderId,
-      type: 'authorization',
-      amount: subtotal,
-      currencyCode: body.currencyCode,
-      provider: 'ips_qr',
-      status: 'pending',
+      orderId, type: 'authorization', amount: subtotal,
+      currencyCode: body.currencyCode, provider: 'ips_qr', status: 'pending',
     })
-
-    // Prelaz u awaiting
-    await db.update(orders)
-      .set({ paymentStatus: 'awaiting' })
-      .where(eq(orders.id, orderId))
+    await db.update(orders).set({ paymentStatus: 'awaiting' }).where(eq(orders.id, orderId))
   }
 
   const responseData = { orderId, orderNumber, ipsQrString }
-  const responseStatus = 201
 
   if (idempotencyKey) {
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
     await db.insert(idempotencyKeys).values({
-      key: idempotencyKey,
-      requestHash: '',
-      responseStatus,
+      key: idempotencyKey, requestHash: '', responseStatus: 201,
       responseBody: JSON.stringify({ data: responseData }),
-      expiresAt,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     }).onConflictDoNothing()
   }
 
-  return c.json({ data: responseData }, responseStatus)
+  return c.json({ data: responseData }, 201)
 })
 
 export { app as checkoutRoutes }

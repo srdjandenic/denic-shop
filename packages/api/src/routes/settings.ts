@@ -1,34 +1,44 @@
-import { Hono } from 'hono'
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
 import { eq } from 'drizzle-orm'
-import { z } from 'zod'
 import { createDb } from '../lib/db'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { settings } from '@denic-shop/core/schema'
 import type { Env } from '../lib/env'
 import type { AuthVariables } from '../middleware/auth'
 
-const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
+const ErrorSchema = z.object({ error: z.string() })
+const KeyParam = z.object({ key: z.string().min(1) })
 
+const app = new OpenAPIHono<{ Bindings: Env; Variables: AuthVariables }>()
 app.use('*', authMiddleware)
 
-app.get('/', async (c) => {
+const listRoute = createRoute({
+  method: 'get', path: '/', tags: ['Settings'],
+  responses: { 200: { description: 'Sva podešavanja', content: { 'application/json': { schema: z.object({ data: z.record(z.string(), z.string()) }) } } } },
+})
+app.openapi(listRoute, async (c) => {
   const db = createDb(c.env.DB)
   const rows = await db.select().from(settings).all()
-  const result = Object.fromEntries(rows.map(r => [r.key, r.value]))
-  return c.json({ data: result })
+  return c.json({ data: Object.fromEntries(rows.map(r => [r.key, r.value])) }, 200)
 })
 
-app.put('/:key', requireRole('owner', 'admin'), async (c) => {
-    const db = createDb(c.env.DB)
-    const key = c.req.param('key')
-    const parsed = z.object({ value: z.string() }).safeParse(await c.req.json())
-    if (!parsed.success) return c.json({ error: 'Validacija neuspešna' }, 422)
-    const { value } = parsed.data
-    await db.insert(settings).values({ key, value }).onConflictDoUpdate({
-      target: settings.key,
-      set: { value },
-    })
-    return c.json({ data: { ok: true } })
-  })
+const putRoute = createRoute({
+  method: 'put', path: '/{key}', tags: ['Settings'],
+  middleware: [requireRole('owner', 'admin')] as const,
+  request: {
+    params: KeyParam,
+    body: { content: { 'application/json': { schema: z.object({ value: z.string() }) } } },
+  },
+  responses: {
+    200: { description: 'Sačuvano', content: { 'application/json': { schema: z.object({ data: z.object({ ok: z.boolean() }) }) } } },
+  },
+})
+app.openapi(putRoute, async (c) => {
+  const db = createDb(c.env.DB)
+  const { key } = c.req.valid('param')
+  const { value } = c.req.valid('json')
+  await db.insert(settings).values({ key, value }).onConflictDoUpdate({ target: settings.key, set: { value } })
+  return c.json({ data: { ok: true as const } }, 200)
+})
 
 export { app as settingsRoutes }

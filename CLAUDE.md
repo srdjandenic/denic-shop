@@ -1,5 +1,11 @@
 # denic-shop — pravila za razvoj
 
+## 0. ARCHITECTURE.md je obavezujući
+
+Pre početka svake celine pročitaj relevantne delove ARCHITECTURE.md. Ako bilo šta iz njega ne može da se uradi kako piše (nekompatibilne verzije, biblioteka ne radi na Workers-u, nedostaje funkcija), **stani i pitaj**. Nikad ne zaobilazi, ne zamenjuj komponentu i ne vraćaj se na ručni kod bez odobrenja.
+
+Na kraju svake celine napiši tabelu: korišćene komponente iz ARCHITECTURE.md (da/ne/gde) i eventualna odstupanja.
+
 ## 1. Mali koraci, ne sve odjednom
 
 Gradi jednu stvar, pokreni je, proveri da radi, pa nastavi. Ne pisati veliki blok koda pa tek onda testirati.

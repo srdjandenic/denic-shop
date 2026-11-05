@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest'
 import { createActor } from 'xstate'
 import { orderMachine } from '../order-machine'
 
-function makeActor(overrides?: Partial<Parameters<typeof orderMachine.getInitialSnapshot>[0]['input']>) {
+import type { OrderContext } from '../order-machine'
+
+function makeActor(overrides?: Partial<OrderContext>) {
   return createActor(orderMachine, {
     input: {
       orderId: 'test-order-1',

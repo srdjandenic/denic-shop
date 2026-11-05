@@ -1,6 +1,5 @@
-import { Hono } from 'hono'
+import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi'
 import { eq } from 'drizzle-orm'
-import { z } from 'zod'
 import { createDb } from '../lib/db'
 import { authMiddleware, requireRole } from '../middleware/auth'
 import { productCategories } from '@denic-shop/core/schema'
@@ -15,45 +14,79 @@ const CategorySchema = z.object({
   sortOrder: z.number().int().default(0),
 })
 
-const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
+const IdParam = z.object({ id: z.string().uuid() })
+const ErrorSchema = z.object({ error: z.string() })
+const OkSchema = z.object({ data: z.object({ ok: z.boolean() }) })
 
+const app = new OpenAPIHono<{ Bindings: Env; Variables: AuthVariables }>()
 app.use('*', authMiddleware)
 
-app.get('/', async (c) => {
+const listRoute = createRoute({
+  method: 'get', path: '/', tags: ['Categories'],
+  responses: { 200: { description: 'Kategorije', content: { 'application/json': { schema: z.object({ data: z.array(z.any()) }) } } } },
+})
+app.openapi(listRoute, async (c) => {
   const db = createDb(c.env.DB)
   const rows = await db.query.productCategories.findMany({
     with: { children: true },
     orderBy: (t) => t.sortOrder,
   })
-  return c.json({ data: rows })
+  return c.json({ data: rows } as never)
 })
 
-app.post('/', requireRole('owner', 'admin'), async (c) => {
+const createRoute_ = createRoute({
+  method: 'post', path: '/', tags: ['Categories'],
+  middleware: [requireRole('owner', 'admin')] as const,
+  request: { body: { content: { 'application/json': { schema: CategorySchema } } } },
+  responses: {
+    201: { description: 'Kreirana', content: { 'application/json': { schema: z.object({ data: z.any() }) } } },
+  },
+})
+app.openapi(createRoute_, async (c) => {
   const db = createDb(c.env.DB)
-  const parsed = CategorySchema.safeParse(await c.req.json())
-  if (!parsed.success) return c.json({ error: 'Validacija neuspešna', details: parsed.error.flatten() }, 422)
-  const data = parsed.data
+  const data = c.req.valid('json')
   const id = crypto.randomUUID()
   await db.insert(productCategories).values({ id, ...data })
   return c.json({ data: { id, ...data } }, 201)
 })
 
-app.patch('/:id', requireRole('owner', 'admin'), async (c) => {
+const patchRoute = createRoute({
+  method: 'patch', path: '/{id}', tags: ['Categories'],
+  middleware: [requireRole('owner', 'admin')] as const,
+  request: {
+    params: IdParam,
+    body: { content: { 'application/json': { schema: CategorySchema.partial() } } },
+  },
+  responses: {
+    200: { description: 'Ažurirana', content: { 'application/json': { schema: OkSchema } } },
+    404: { description: 'Nije pronađena', content: { 'application/json': { schema: ErrorSchema } } },
+  },
+})
+app.openapi(patchRoute, async (c) => {
   const db = createDb(c.env.DB)
-  const existing = await db.query.productCategories.findFirst({ where: eq(productCategories.id, c.req.param('id')) })
+  const { id } = c.req.valid('param')
+  const existing = await db.query.productCategories.findFirst({ where: eq(productCategories.id, id) })
   if (!existing) return c.json({ error: 'Nije pronađena' }, 404)
-  const parsed = CategorySchema.partial().safeParse(await c.req.json())
-  if (!parsed.success) return c.json({ error: 'Validacija neuspešna', details: parsed.error.flatten() }, 422)
-  await db.update(productCategories).set(parsed.data).where(eq(productCategories.id, existing.id))
-  return c.json({ data: { ok: true } })
+  await db.update(productCategories).set(c.req.valid('json')).where(eq(productCategories.id, id))
+  return c.json({ data: { ok: true as const } }, 200)
 })
 
-app.delete('/:id', requireRole('owner', 'admin'), async (c) => {
+const deleteRoute = createRoute({
+  method: 'delete', path: '/{id}', tags: ['Categories'],
+  middleware: [requireRole('owner', 'admin')] as const,
+  request: { params: IdParam },
+  responses: {
+    200: { description: 'Obrisana', content: { 'application/json': { schema: OkSchema } } },
+    404: { description: 'Nije pronađena', content: { 'application/json': { schema: ErrorSchema } } },
+  },
+})
+app.openapi(deleteRoute, async (c) => {
   const db = createDb(c.env.DB)
-  const existing = await db.query.productCategories.findFirst({ where: eq(productCategories.id, c.req.param('id')) })
+  const { id } = c.req.valid('param')
+  const existing = await db.query.productCategories.findFirst({ where: eq(productCategories.id, id) })
   if (!existing) return c.json({ error: 'Nije pronađena' }, 404)
-  await db.delete(productCategories).where(eq(productCategories.id, existing.id))
-  return c.json({ data: { ok: true } })
+  await db.delete(productCategories).where(eq(productCategories.id, id))
+  return c.json({ data: { ok: true as const } }, 200)
 })
 
 export { app as categoryRoutes }

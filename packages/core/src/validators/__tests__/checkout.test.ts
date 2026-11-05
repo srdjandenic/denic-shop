@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { CheckoutSchema } from '../customers'
 
 const validCheckout = {
-  items: [{ variantId: '00000000-0000-0000-0000-000000000001', quantity: 2 }],
+  items: [{ variantId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', quantity: 2 }],
   paymentMethod: 'ips_qr' as const,
   shippingAddress: {
     firstName: 'Petar',
@@ -30,11 +30,11 @@ describe('CheckoutSchema', () => {
   it('odbija kolicinu 0 ili negativnu', () => {
     const r1 = CheckoutSchema.safeParse({
       ...validCheckout,
-      items: [{ variantId: '00000000-0000-0000-0000-000000000001', quantity: 0 }],
+      items: [{ variantId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', quantity: 0 }],
     })
     const r2 = CheckoutSchema.safeParse({
       ...validCheckout,
-      items: [{ variantId: '00000000-0000-0000-0000-000000000001', quantity: -1 }],
+      items: [{ variantId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', quantity: -1 }],
     })
     expect(r1.success).toBe(false)
     expect(r2.success).toBe(false)

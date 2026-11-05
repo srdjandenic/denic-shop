@@ -39,7 +39,12 @@ export const orderMachine = createMachine(
   {
     id: 'order',
     type: 'parallel',
-    context: ({ input }: { input: OrderContext }) => input,
+    types: {} as {
+      context: OrderContext
+      input: OrderContext
+      events: OrderEvent
+    },
+    context: ({ input }) => ({ ...input }),
 
     states: {
       order: {
@@ -170,11 +175,12 @@ export function snapshotToOrderState(snapshot: ReturnType<typeof orderMachine.ge
     payment: PaymentStatus
     fulfillment: FulfillmentStatus
   }
-  return {
+  const result: OrderSnapshot = {
     status: orderState.order,
     paymentStatus: orderState.payment,
     fulfillmentStatus: orderState.fulfillment,
-    cancelReason: snapshot.context.cancelReason,
-    trackingNumber: snapshot.context.trackingNumber,
   }
+  if (snapshot.context.cancelReason !== undefined) result.cancelReason = snapshot.context.cancelReason
+  if (snapshot.context.trackingNumber !== undefined) result.trackingNumber = snapshot.context.trackingNumber
+  return result
 }
