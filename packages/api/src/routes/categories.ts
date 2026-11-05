@@ -1,63 +1,59 @@
 import { Hono } from 'hono'
-import { eq, and } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
+import { z } from 'zod'
 import { createDb } from '../lib/db'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { categories } from '@denic-shop/core/schema'
+import { productCategories } from '@denic-shop/core/schema'
 import type { Env } from '../lib/env'
-import type { JwtPayload } from '../lib/auth'
+import type { AuthVariables } from '../middleware/auth'
 
-type Variables = { user: JwtPayload }
+const CategorySchema = z.object({
+  parentId: z.string().uuid().optional(),
+  slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  sortOrder: z.number().int().default(0),
+})
 
-export const categoryRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
+const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
-categoryRoutes.use('*', authMiddleware)
+app.use('*', authMiddleware)
 
-categoryRoutes.get('/', async (c) => {
-  const { tenantId } = c.get('user')
+app.get('/', async (c) => {
   const db = createDb(c.env.DB)
-  const rows = await db.select().from(categories).where(eq(categories.tenantId, tenantId))
+  const rows = await db.query.productCategories.findMany({
+    with: { children: true },
+    orderBy: (t) => t.sortOrder,
+  })
   return c.json({ data: rows })
 })
 
-categoryRoutes.post('/', requireRole('owner', 'admin'), async (c) => {
-  const { tenantId } = c.get('user')
-  const body = await c.req.json()
-  if (!body.name || !body.slug) return c.json({ error: 'name i slug su obavezni' }, 400)
-
+app.post('/', requireRole('owner', 'admin'), async (c) => {
   const db = createDb(c.env.DB)
+  const parsed = CategorySchema.safeParse(await c.req.json())
+  if (!parsed.success) return c.json({ error: 'Validacija neuspešna', details: parsed.error.flatten() }, 422)
+  const data = parsed.data
   const id = crypto.randomUUID()
-  await db.insert(categories).values({ id, tenantId, name: body.name, slug: body.slug, parentId: body.parentId ?? null })
-
-  const created = await db.select().from(categories).where(eq(categories.id, id))
-  return c.json({ data: created[0] }, 201)
+  await db.insert(productCategories).values({ id, ...data })
+  return c.json({ data: { id, ...data } }, 201)
 })
 
-categoryRoutes.patch('/:id', requireRole('owner', 'admin'), async (c) => {
-  const { tenantId } = c.get('user')
+app.patch('/:id', requireRole('owner', 'admin'), async (c) => {
   const db = createDb(c.env.DB)
-
-  const existing = await db.select().from(categories)
-    .where(and(eq(categories.id, c.req.param('id')), eq(categories.tenantId, tenantId)))
-
-  if (!existing[0]) return c.json({ error: 'Nije pronađena' }, 404)
-
-  const body = await c.req.json()
-  await db.update(categories)
-    .set({ name: body.name ?? existing[0].name, slug: body.slug ?? existing[0].slug })
-    .where(eq(categories.id, existing[0].id))
-
+  const existing = await db.query.productCategories.findFirst({ where: eq(productCategories.id, c.req.param('id')) })
+  if (!existing) return c.json({ error: 'Nije pronađena' }, 404)
+  const parsed = CategorySchema.partial().safeParse(await c.req.json())
+  if (!parsed.success) return c.json({ error: 'Validacija neuspešna', details: parsed.error.flatten() }, 422)
+  await db.update(productCategories).set(parsed.data).where(eq(productCategories.id, existing.id))
   return c.json({ data: { ok: true } })
 })
 
-categoryRoutes.delete('/:id', requireRole('owner', 'admin'), async (c) => {
-  const { tenantId } = c.get('user')
+app.delete('/:id', requireRole('owner', 'admin'), async (c) => {
   const db = createDb(c.env.DB)
-
-  const existing = await db.select().from(categories)
-    .where(and(eq(categories.id, c.req.param('id')), eq(categories.tenantId, tenantId)))
-
-  if (!existing[0]) return c.json({ error: 'Nije pronađena' }, 404)
-
-  await db.delete(categories).where(eq(categories.id, existing[0].id))
+  const existing = await db.query.productCategories.findFirst({ where: eq(productCategories.id, c.req.param('id')) })
+  if (!existing) return c.json({ error: 'Nije pronađena' }, 404)
+  await db.delete(productCategories).where(eq(productCategories.id, existing.id))
   return c.json({ data: { ok: true } })
 })
+
+export { app as categoryRoutes }

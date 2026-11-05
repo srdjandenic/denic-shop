@@ -1,37 +1,36 @@
 import { createMiddleware } from 'hono/factory'
-import { getCookie } from 'hono/cookie'
-import { verifyToken, type JwtPayload } from '../lib/auth'
+import { createAuth } from '../lib/auth'
 import type { Env } from '../lib/env'
-import type { UserRole } from '@denic-shop/core/types'
 
-type Variables = {
-  user: JwtPayload
+export type AuthVariables = {
+  userId: string
+  userRole: 'owner' | 'admin' | 'staff'
+  sessionId: string
 }
 
-export const authMiddleware = createMiddleware<{ Bindings: Env; Variables: Variables }>(
+export const authMiddleware = createMiddleware<{ Bindings: Env; Variables: AuthVariables }>(
   async (c, next) => {
-    const token = getCookie(c, 'session') ?? c.req.header('Authorization')?.replace('Bearer ', '')
+    const auth = createAuth(c.env.DB, c.env.BETTER_AUTH_SECRET)
+    const session = await auth.api.getSession({ headers: c.req.raw.headers })
 
-    if (!token) {
-      return c.json({ error: 'Nije autorizovano' }, 401)
+    if (!session?.user) {
+      c.res = c.json({ error: 'Nije autentifikovano' }, 401)
+      return
     }
 
-    try {
-      const payload = await verifyToken(token, c.env.JWT_SECRET)
-      c.set('user', payload)
-      await next()
-    } catch {
-      return c.json({ error: 'Nevažeći token' }, 401)
-    }
-  }
+    c.set('userId', session.user.id)
+    c.set('userRole', (session.user as any).role ?? 'staff')
+    c.set('sessionId', session.session.id)
+    return next()
+  },
 )
 
-export function requireRole(...roles: UserRole[]) {
-  return createMiddleware<{ Bindings: Env; Variables: Variables }>(async (c, next) => {
-    const user = c.get('user')
-    if (!user || !roles.includes(user.role)) {
-      return c.json({ error: 'Nedovoljne privilegije' }, 403)
+export const requireRole = (...roles: Array<'owner' | 'admin' | 'staff'>) =>
+  createMiddleware<{ Bindings: Env; Variables: AuthVariables }>(async (c, next) => {
+    const role = c.get('userRole')
+    if (!roles.includes(role)) {
+      c.res = c.json({ error: 'Nedovoljne privilegije' }, 403)
+      return
     }
-    await next()
+    return next()
   })
-}

@@ -1,66 +1,34 @@
 import { Hono } from 'hono'
 import { eq } from 'drizzle-orm'
+import { z } from 'zod'
 import { createDb } from '../lib/db'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { tenants, paymentMethods } from '@denic-shop/core/schema'
+import { settings } from '@denic-shop/core/schema'
 import type { Env } from '../lib/env'
-import type { JwtPayload } from '../lib/auth'
+import type { AuthVariables } from '../middleware/auth'
 
-type Variables = { user: JwtPayload }
+const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
-export const settingsRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
+app.use('*', authMiddleware)
 
-settingsRoutes.use('*', authMiddleware)
-
-settingsRoutes.get('/', async (c) => {
-  const { tenantId } = c.get('user')
+app.get('/', async (c) => {
   const db = createDb(c.env.DB)
-  const rows = await db.select().from(tenants).where(eq(tenants.id, tenantId))
-  if (!rows[0]) return c.json({ error: 'Tenant nije pronađen' }, 404)
-  return c.json({ data: rows[0] })
+  const rows = await db.select().from(settings).all()
+  const result = Object.fromEntries(rows.map(r => [r.key, r.value]))
+  return c.json({ data: result })
 })
 
-settingsRoutes.patch('/', requireRole('owner'), async (c) => {
-  const { tenantId } = c.get('user')
-  const db = createDb(c.env.DB)
-  const body = await c.req.json()
-
-  await db.update(tenants)
-    .set({
-      name: body.name ?? undefined,
-      settings: body.settings ?? undefined,
-      updatedAt: new Date().toISOString(),
+app.put('/:key', requireRole('owner', 'admin'), async (c) => {
+    const db = createDb(c.env.DB)
+    const key = c.req.param('key')
+    const parsed = z.object({ value: z.string() }).safeParse(await c.req.json())
+    if (!parsed.success) return c.json({ error: 'Validacija neuspešna' }, 422)
+    const { value } = parsed.data
+    await db.insert(settings).values({ key, value }).onConflictDoUpdate({
+      target: settings.key,
+      set: { value },
     })
-    .where(eq(tenants.id, tenantId))
+    return c.json({ data: { ok: true } })
+  })
 
-  return c.json({ data: { ok: true } })
-})
-
-settingsRoutes.get('/payment-methods', async (c) => {
-  const { tenantId } = c.get('user')
-  const db = createDb(c.env.DB)
-  const rows = await db.select().from(paymentMethods).where(eq(paymentMethods.tenantId, tenantId))
-  return c.json({ data: rows })
-})
-
-settingsRoutes.patch('/payment-methods/:id', requireRole('owner', 'admin'), async (c) => {
-  const { tenantId } = c.get('user')
-  const db = createDb(c.env.DB)
-  const body = await c.req.json()
-
-  const existing = await db.select().from(paymentMethods)
-    .where(eq(paymentMethods.id, c.req.param('id')))
-
-  if (!existing[0] || existing[0].tenantId !== tenantId) {
-    return c.json({ error: 'Nije pronađen' }, 404)
-  }
-
-  await db.update(paymentMethods)
-    .set({
-      active: body.active ?? existing[0].active,
-      config: body.config ? { ...existing[0].config as object, ...body.config } : existing[0].config,
-    })
-    .where(eq(paymentMethods.id, existing[0].id))
-
-  return c.json({ data: { ok: true } })
-})
+export { app as settingsRoutes }

@@ -5,32 +5,30 @@ import { authRoutes } from './routes/auth'
 import { productRoutes } from './routes/products'
 import { orderRoutes } from './routes/orders'
 import { checkoutRoutes } from './routes/checkout'
-import { storefrontRoutes } from './routes/storefront'
 import { categoryRoutes } from './routes/categories'
-import { settingsRoutes } from './routes/settings'
-import { userRoutes } from './routes/users'
 import { mediaRoutes } from './routes/media'
+import { settingsRoutes } from './routes/settings'
 import type { Env } from './lib/env'
 
 const app = new Hono<{ Bindings: Env }>()
 
 app.use('*', logger())
 app.use('*', cors({
-  origin: (origin) => origin, // Per-tenant CORS — u produkciji ograniči na tenant domen
+  origin: (origin) => origin,
   credentials: true,
 }))
 
-app.get('/health', (c) => c.json({ ok: true, version: '0.1.0' }))
+app.get('/health', (c) => c.json({ ok: true, version: '0.2.0' }))
 
-app.route('/api/v1/auth', authRoutes)
+// Better Auth handles all /api/auth/* routes
+app.route('/api/auth', authRoutes)
+
 app.route('/api/v1/products', productRoutes)
 app.route('/api/v1/orders', orderRoutes)
 app.route('/api/v1/checkout', checkoutRoutes)
-app.route('/api/v1/storefront', storefrontRoutes)
 app.route('/api/v1/categories', categoryRoutes)
-app.route('/api/v1/settings', settingsRoutes)
-app.route('/api/v1/users', userRoutes)
 app.route('/api/v1/media', mediaRoutes)
+app.route('/api/v1/settings', settingsRoutes)
 
 app.notFound((c) => c.json({ error: 'Ruta nije pronađena' }, 404))
 app.onError((err, c) => {

@@ -2,144 +2,194 @@ import { Hono } from 'hono'
 import { eq, and, desc } from 'drizzle-orm'
 import { createDb } from '../lib/db'
 import { authMiddleware, requireRole } from '../middleware/auth'
-import { CreateProductSchema, UpdateProductSchema } from '@denic-shop/core/validators'
-import { products, productVariants, productMedia } from '@denic-shop/core/schema'
+import {
+  CreateProductSchema,
+  UpdateProductSchema,
+} from '@denic-shop/core/validators'
+import {
+  products,
+  productVariants,
+  variantPrices,
+  productMedia,
+  productOptions,
+  productOptionValues,
+  productVariantOptions,
+  inventoryItems,
+  inventoryLevels,
+} from '@denic-shop/core/schema'
 import { slugify } from '@denic-shop/core/utils'
 import type { Env } from '../lib/env'
-import type { JwtPayload } from '../lib/auth'
+import type { AuthVariables } from '../middleware/auth'
 
-type Variables = { user: JwtPayload }
+const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>()
 
-export const productRoutes = new Hono<{ Bindings: Env; Variables: Variables }>()
+app.use('*', authMiddleware)
 
-productRoutes.use('*', authMiddleware)
-
-productRoutes.get('/', async (c) => {
-  const { tenantId } = c.get('user')
+// GET /products
+app.get('/', async (c) => {
   const db = createDb(c.env.DB)
-
   const rows = await db.query.products.findMany({
-    where: eq(products.tenantId, tenantId),
-    with: { productVariants: true, productMedia: { where: eq(productMedia.isCover, true) } },
+    with: {
+      variants: { with: { prices: true }, orderBy: (v) => v.sortOrder },
+      media: { where: eq(productMedia.isCover, true) },
+    },
     orderBy: [desc(products.createdAt)],
   })
-
   return c.json({ data: rows })
 })
 
-productRoutes.get('/:id', async (c) => {
-  const { tenantId } = c.get('user')
+// GET /products/:id
+app.get('/:id', async (c) => {
   const db = createDb(c.env.DB)
-
   const product = await db.query.products.findFirst({
-    where: and(eq(products.id, c.req.param('id')), eq(products.tenantId, tenantId)),
-    with: { productVariants: true, productMedia: true },
+    where: eq(products.id, c.req.param('id')),
+    with: {
+      variants: { with: { prices: true, variantOptions: { with: { optionValue: true } } } },
+      media: true,
+      options: { with: { values: true } },
+    },
   })
-
   if (!product) return c.json({ error: 'Nije pronađen' }, 404)
   return c.json({ data: product })
 })
 
-productRoutes.post('/', requireRole('owner', 'admin'), async (c) => {
-  const { tenantId } = c.get('user')
-  const body = await c.req.json()
-  const result = CreateProductSchema.safeParse(body)
-  if (!result.success) {
-    return c.json({ error: 'Nevalidni podaci', details: result.error.flatten() }, 400)
-  }
-
+// POST /products
+app.post('/', requireRole('owner', 'admin'), async (c) => {
   const db = createDb(c.env.DB)
-  const { variants, ...productData } = result.data
+  const parsed = CreateProductSchema.safeParse(await c.req.json())
+  if (!parsed.success) return c.json({ error: 'Validacija neuspešna', details: parsed.error.flatten() }, 422)
+  const { variants, options, ...productData } = parsed.data
 
   const productId = crypto.randomUUID()
+  const slug = productData.slug || slugify(productData.name)
+
   await db.insert(products).values({
     id: productId,
-    tenantId,
     ...productData,
-    slug: productData.slug || slugify(productData.name),
+    slug,
   })
 
-  const variantRows = variants.map((v, i) => ({
-    ...v,
-    productId,
-    // Ako nema varijanti (has_variants=false), generišemo default SKU
-    sku: v.sku || `${productData.slug}-${i + 1}`,
-    name: v.name || productData.name,
-  }))
+  // Insert options + values
+  for (const opt of options) {
+    const optId = opt.id ?? crypto.randomUUID()
+    await db.insert(productOptions).values({ id: optId, productId, name: opt.name, sortOrder: opt.sortOrder })
+    for (const val of opt.values) {
+      await db.insert(productOptionValues).values({
+        id: val.id ?? crypto.randomUUID(),
+        optionId: optId,
+        value: val.value,
+        sortOrder: val.sortOrder,
+      })
+    }
+  }
 
-  await db.insert(productVariants).values(variantRows)
+  // Insert variants, prices, inventory
+  for (let i = 0; i < variants.length; i++) {
+    const v = variants[i]!
+    const variantId = v.id ?? crypto.randomUUID()
+    await db.insert(productVariants).values({
+      id: variantId,
+      productId,
+      sku: v.sku || `${slug}-${i + 1}`,
+      name: v.name || productData.name,
+      requiresShipping: v.requiresShipping,
+      allowBackorder: v.allowBackorder,
+      weight: v.weight,
+      weightUnit: v.weightUnit,
+      active: v.active,
+      sortOrder: v.sortOrder,
+    })
+    for (const price of v.prices) {
+      await db.insert(variantPrices).values({
+        variantId,
+        currencyCode: price.currencyCode,
+        amount: price.amount,
+        compareAtAmount: price.compareAtAmount,
+      })
+    }
+    // Inicijalni inventory item (zalihe = 0)
+    const invItemId = crypto.randomUUID()
+    await db.insert(inventoryItems).values({ id: invItemId, variantId, sku: v.sku || `${slug}-${i + 1}` })
+  }
 
   const created = await db.query.products.findFirst({
     where: eq(products.id, productId),
-    with: { productVariants: true },
+    with: { variants: { with: { prices: true } }, media: true },
   })
-
   return c.json({ data: created }, 201)
 })
 
-productRoutes.patch('/:id', requireRole('owner', 'admin'), async (c) => {
-  const { tenantId } = c.get('user')
-  const body = await c.req.json()
-  const result = UpdateProductSchema.safeParse(body)
-  if (!result.success) {
-    return c.json({ error: 'Nevalidni podaci', details: result.error.flatten() }, 400)
-  }
-
+// PATCH /products/:id
+app.patch('/:id', requireRole('owner', 'admin'), async (c) => {
   const db = createDb(c.env.DB)
-  const existing = await db.query.products.findFirst({
-    where: and(eq(products.id, c.req.param('id')), eq(products.tenantId, tenantId)),
-  })
+  const id = c.req.param('id')
+  const existing = await db.query.products.findFirst({ where: eq(products.id, id) })
   if (!existing) return c.json({ error: 'Nije pronađen' }, 404)
 
-  const { variants, ...productData } = result.data
-  await db.update(products)
-    .set({ ...productData, updatedAt: new Date().toISOString() })
-    .where(eq(products.id, existing.id))
+  const parsed = UpdateProductSchema.safeParse(await c.req.json())
+  if (!parsed.success) return c.json({ error: 'Validacija neuspešna', details: parsed.error.flatten() }, 422)
+  const { variants, options, ...productData } = parsed.data
+
+  if (Object.keys(productData).length > 0) {
+    await db.update(products)
+      .set({ ...productData, updatedAt: new Date().toISOString() })
+      .where(eq(products.id, id))
+  }
 
   if (variants !== undefined) {
     const slug = productData.slug || existing.slug
-    const productName = productData.name || existing.name
-    await db.delete(productVariants).where(eq(productVariants.productId, existing.id))
-    if (variants.length > 0) {
-      await db.insert(productVariants).values(variants.map((v, i) => ({
-        id: v.id ?? crypto.randomUUID(),
-        productId: existing.id,
+    // delete+insert za varijante
+    const existingVariantIds = (await db.query.productVariants.findMany({
+      where: eq(productVariants.productId, id),
+      columns: { id: true },
+    })).map(v => v.id)
+
+    await db.delete(productVariants).where(eq(productVariants.productId, id))
+
+    for (let i = 0; i < variants.length; i++) {
+      const v = variants[i]!
+      const variantId = v.id ?? (existingVariantIds[i] ?? crypto.randomUUID())
+      await db.insert(productVariants).values({
+        id: variantId,
+        productId: id,
         sku: v.sku || `${slug}-${i + 1}`,
-        name: v.name || productName,
-        priceRsd: v.priceRsd,
-        compareAtPriceRsd: v.compareAtPriceRsd ?? null,
-        stock: v.stock,
-        attributes: v.attributes,
-        active: v.active,
-      })))
+        name: v.name || (productData.name || existing.name),
+        requiresShipping: v.requiresShipping ?? true,
+        allowBackorder: v.allowBackorder ?? false,
+        weight: v.weight,
+        weightUnit: v.weightUnit ?? 'g',
+        active: v.active ?? true,
+        sortOrder: v.sortOrder ?? i,
+      })
+      for (const price of v.prices ?? []) {
+        await db.insert(variantPrices).values({
+          variantId,
+          currencyCode: price.currencyCode,
+          amount: price.amount,
+          compareAtAmount: price.compareAtAmount,
+        })
+      }
     }
   }
 
   return c.json({ data: { ok: true } })
 })
 
-productRoutes.delete('/:id', requireRole('owner', 'admin'), async (c) => {
-  const { tenantId } = c.get('user')
+// DELETE /products/:id
+app.delete('/:id', requireRole('owner', 'admin'), async (c) => {
   const db = createDb(c.env.DB)
-
-  const existing = await db.query.products.findFirst({
-    where: and(eq(products.id, c.req.param('id')), eq(products.tenantId, tenantId)),
-  })
+  const existing = await db.query.products.findFirst({ where: eq(products.id, c.req.param('id')) })
   if (!existing) return c.json({ error: 'Nije pronađen' }, 404)
-
   await db.delete(products).where(eq(products.id, existing.id))
   return c.json({ data: { ok: true } })
 })
 
-// Upload slike na R2
-productRoutes.post('/:id/media', requireRole('owner', 'admin'), async (c) => {
-  const { tenantId } = c.get('user')
+// POST /products/:id/media
+app.post('/:id/media', requireRole('owner', 'admin'), async (c) => {
   const db = createDb(c.env.DB)
   const productId = c.req.param('id')
 
-  const existing = await db.query.products.findFirst({
-    where: and(eq(products.id, productId), eq(products.tenantId, tenantId)),
-  })
+  const existing = await db.query.products.findFirst({ where: eq(products.id, productId) })
   if (!existing) return c.json({ error: 'Nije pronađen' }, 404)
 
   const formData = await c.req.formData()
@@ -147,7 +197,7 @@ productRoutes.post('/:id/media', requireRole('owner', 'admin'), async (c) => {
   if (!file) return c.json({ error: 'Fajl nije prosleđen' }, 400)
 
   const ext = file.name.split('.').pop() ?? 'jpg'
-  const r2Key = `${tenantId}/products/${productId}/${crypto.randomUUID()}.${ext}`
+  const r2Key = `products/${productId}/${crypto.randomUUID()}.${ext}`
 
   await c.env.MEDIA.put(r2Key, file.stream(), {
     httpMetadata: { contentType: file.type },
@@ -155,20 +205,19 @@ productRoutes.post('/:id/media', requireRole('owner', 'admin'), async (c) => {
 
   const isCover = formData.get('isCover') === 'true'
   const mediaId = crypto.randomUUID()
+  const url = `/api/v1/media/${r2Key}`
 
   await db.insert(productMedia).values({
     id: mediaId,
     productId,
     r2Key,
-    alt: formData.get('alt') as string | null ?? '',
+    url,
+    alt: (formData.get('alt') as string) || '',
+    mimeType: file.type,
     isCover,
   })
 
-  return c.json({
-    data: {
-      id: mediaId,
-      url: `/api/v1/media/${r2Key}`,
-      r2Key,
-    },
-  }, 201)
+  return c.json({ data: { id: mediaId, url, r2Key } }, 201)
 })
+
+export { app as productRoutes }
