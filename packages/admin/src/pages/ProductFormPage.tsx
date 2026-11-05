@@ -19,8 +19,9 @@ function slugify(s: string) {
 }
 
 export function ProductFormPage() {
-  const { id } = useParams({ from: '/_dashboard/products/$id' }) as { id?: string }
-  const isNew = !id || id === 'new'
+  const params = useParams({ strict: false }) as { id?: string }
+  const id = params.id
+  const isNew = !id
   const navigate = useNavigate()
   const qc = useQueryClient()
 
