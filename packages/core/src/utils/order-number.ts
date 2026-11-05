@@ -11,5 +11,6 @@ export function generateOrderNumber(prefix: string, sequence: number): string {
 export function parseOrderSequence(orderNumber: string): number {
   const parts = orderNumber.split('-')
   const last = parts[parts.length - 1]
-  return last ? parseInt(last, 10) : 0
+  const n = last ? parseInt(last, 10) : NaN
+  return Number.isNaN(n) ? 0 : n
 }
